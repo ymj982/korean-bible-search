@@ -1,40 +1,34 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal, EditorSuggest, EditorPosition, EditorSuggestContext, EditorSuggestTriggerInfo, TFile } from 'obsidian';
 const request = require('request');
 
-// Remember to rename these classes and interfaces!
-
+// Interface for plugin settings
 interface KoreanBibleSearchPluginSettings {
 	mySetting: string;
 }
 
-interface SuggestionDetails {
-	chapter: string;
-	verses: string;
-	book: string;
-  }
-
+// Default settings
 const DEFAULT_SETTINGS: KoreanBibleSearchPluginSettings = {
 	mySetting: 'default'
 }
 
+// Main plugin class
 export default class KoreanBibleSearchPlugin extends Plugin {
 	settings: KoreanBibleSearchPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
+		// Add a ribbon icon
 		const ribbonIconEl = this.addRibbonIcon('quote', 'Search Bible', (evt: MouseEvent) => {
 			new VerseSuggestModal(this.app).open();
 		});
-		// Perform additional things with the ribbon
 		ribbonIconEl.addClass('my-plugin-ribbon-class');
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
+		// Add a status bar item
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText('Status Bar Text');
 
-		// This adds a simple command that can be triggered anywhere
+		// Add a simple command
 		this.addCommand({
 			id: 'open-sample-modal-simple',
 			name: 'Open sample modal (simple)',
@@ -42,51 +36,15 @@ export default class KoreanBibleSearchPlugin extends Plugin {
 				new VerseSuggestModal(this.app).open();
 			}
 		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		// this.addCommand({
-		// 	id: 'sample-editor-command',
-		// 	name: 'Sample editor command',
-		// 	editorCallback: (editor: Editor, view: MarkdownView) => {
-		// 		console.log(editor.getSelection());
-		// 		editor.replaceSelection('Sample Editor Command');
-		// 	}
-		// });
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		// this.addCommand({
-		// 	id: 'open-sample-modal-complex',
-		// 	name: 'Open sample modal (complex)',
-		// 	checkCallback: (checking: boolean) => {
-		// 		// Conditions to check
-		// 		const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		// 		if (markdownView) {
-		// 			// If checking is true, we're simply "checking" if the command can be run.
-		// 			// If checking is false, then we want to actually perform the operation.
-		// 			if (!checking) {
-		// 				new SampleModal(this.app).open();
-		// 			}
 
-		// 			// This command will only show up in Command Palette when the check function returns true
-		// 			return true;
-		// 		}
-		// 	}
-		// });
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
+		// Add a settings tab
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// Register the editor suggestion
+		this.registerEditorSuggest(new VerseEditorSuggester(this, this.settings));
 	}
 
-	onunload() {
-
-	}
+	onunload() {}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -97,6 +55,7 @@ export default class KoreanBibleSearchPlugin extends Plugin {
 	}
 }
 
+// Book Names
 const bookNames = {
 	"1": {
 		name: "Genesis",
@@ -955,261 +914,214 @@ const bookNames = {
 			"Rvltn"
 		  ],
 	},
-	
-	/*
-   <option>ge (Genesis)</option>
-   <option>exo (Exodus)</option>
-   <option>lev (Leviticus)</option>
-   <option>num (Numbers)</option>
-   <option>deu (Deuteronomy)</option>
-   <option>josh (Joshua)</option>
-   <option>jdgs (Judges)</option>
-   <option>ruth (Ruth)</option>
-   <option>1sm (1 Samuel)</option>
-   <option>2sm (2 Samuel)</option>
-   <option>1ki (1 Kings)</option>
-   <option>2ki (2 Kings)</option>
-   <option>1chr (1 Chronicles)</option>
-   <option>2chr (2 Chronicles)</option>
-   <option>ezra (Ezra)</option>
-   <option>neh (Nehemiah)</option>
-   <option>est (Esther)</option>
-   <option>job (Job)</option>
-   <option>psa (Psalms)</option>
-   <option>prv (Proverbs)</option>
-   <option>eccl (Ecclesiastes)</option>
-   <option>ssol (Songs)</option>
-   <option>isa (Isaiah)</option>
-   <option>jer (Jeremiah)</option>
-   <option>lam (Lamentations)</option>
-   <option>eze (Ezekiel)</option>
-   <option>dan (Daniel)</option>
-   <option>hos (Hosea)</option>
-   <option>joel (Joel)</option>
-   <option>amos (Amos)</option>
-   <option>obad (Obadiah)</option>
-   <option>jonah (Jonah)</option>
-   <option>mic (Micah)</option>
-   <option>nahum (Nahum)</option>
-   <option>hab (Habakkuk)</option>
-   <option>zep (Zephaniah)</option>
-   <option>hag (Haggai)</option>
-   <option>zep (Zechariah)</option>
-   <option>mal (Malachi)</option>
-   <option>mat (Matthew)</option>
-   <option>mark (Mark)</option>
-   <option>luke (Luke)</option>
-   <option>john (John)</option>
-   <option>acts (Acts)</option>
-   <option>rom (Romans)</option>
-   <option>1cor (1 Corinthians)</option>
-   <option>2cor (2 Corinthians)</option>
-   <option>gal (Galatians)</option>
-   <option>eph (Ephesians)</option>
-   <option>phi (Philippians)</option>
-   <option>col (Colossians)</option>
-   <option>1th (1 Thessalonians)</option>
-   <option>2th (2 Thessalonians)</option>
-   <option>1tim (1 Timothy)</option>
-   <option>2tim (2 Timothy)</option>
-   <option>titus (Titus)</option>
-   <option>phmn (Philemon)</option>
-   <option>heb (Hebrews)</option>
-   <option>jas (James)</option>
-   <option>1pet (1 Peter)</option>
-   <option>2pet (2 Peter)</option>
-   <option>1jn (1 John)</option>
-   <option>2jn (2 John)</option>
-   <option>3jn (3 John)</option>
-   <option>jude (Jude)</option>
-   <option>rev (Revelation)</option>
-  */
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		this.setContent("This is sample")
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
+// Utility functions
 function requestPromise(url: string): Promise<string> {
 	return new Promise((resolve, reject) => {
-	  request(url, (error: any, response: any, body: any) => {
-		if (error) {
-		  reject(error);
-		} else {
-		  resolve(body);
-		}
-	  });
+		request(url, (error: any, response: any, body: any) => {
+			if (error) {
+				reject(error);
+			} else {
+				resolve(body);
+			}
+		});
 	});
-  }
+}
 
-var MODAL_REG = /([123])*\s*[A-z]{2,}\s*\d{1,3}:\d{1,3}(-\d{1,3})*/;
-var KOR_MODAL_REG =  /([\uAC00-\uD7AF]{1,})\s*(\d{1,3}):(\d{1,3}(-\d{1,3})?)/;
-var BOOK_REG = /[123]*\s*[A-z]{2,}/;
-var DEFAULT_TRIGGER_PREFIX_REG = /--|(\+\+)/;
-
-var verseMatch = (verseTrigger: string) => {
+function verseMatch(verseTrigger: string) {
 	const cleanedQuery = verseTrigger.replace(/\s+/g, '');
-	const matchResults = cleanedQuery.match(KOR_MODAL_REG);
-	if (!matchResults) {
-	  return "";
-	} else {
-	  return matchResults;
-	}
-  };
+	return cleanedQuery.match(/([\uAC00-\uD7AF]{1,})\s*(\d{1,3}):(\d{1,3}(-\d{1,3})?)/);
+}
 
+interface Verse {
+	verseNumber: string;
+	verseText: string;
+}
+
+function extractVerses(html: string): Verse[] {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(html, 'text/html');
+	const smallTags = doc.querySelectorAll('small');
+	const verses: Verse[] = [];
+
+	smallTags.forEach((smallTag) => {
+		const verseNumber = smallTag.textContent!.trim();
+		let textNode = smallTag.nextSibling;
+		let verseText = '';
+
+		while (textNode && textNode.nodeName !== 'BR') {
+			if (textNode.nodeType === Node.TEXT_NODE) {
+				verseText += textNode.textContent!.trim();
+			}
+			textNode = textNode.nextSibling;
+		}
+
+		verses.push({ verseNumber, verseText });
+	});
+
+	return verses;
+}
+
+function formatVerses(verses: Verse[]): string {
+	return verses.map(v => {
+		const verseNumber = v.verseNumber.split(':')[1];
+		return `${verseNumber} ${v.verseText}`;
+	}).join('\n');
+}
+
+function formatVersesForCallout(suggestion: string): string {
+	return `> [!quote]+ ${suggestion}`;
+}
+
+async function callAPI(query: string): Promise<string[]> {
+	try {
+		const apiUrl = `http://ibibles.net/quote.php?kor-${query}`;
+		const response = await requestPromise(apiUrl);
+		const extractedVerses = extractVerses(response);
+		return [formatVerses(extractedVerses)];
+	} catch (error) {
+		console.error('Error fetching data:', error);
+		return [];
+	}
+}
+
+// Verse Suggest Modal class
 class VerseSuggestModal extends SuggestModal<string> {
 	private selectedVerses: string | null = null;
+
 	constructor(app: App) {
 		super(app);
 		this.setInstructions([
 			{ command: "", purpose: "Select verses to insert, ex: 요한복음3:16-18" }
 		]);
 	}
-	onOpen() {
-		super.onOpen();
-	}
-	// Return all available suggestions
+
 	async getSuggestions(query: string): Promise<string[]> {
 		const match = verseMatch(query);
 		if (match) {
-			console.log("trigger on", match);
-			const book = match[1];          // Book name
-			const chapter = match[2];       // Chapter number
-			const verses = match[3];        // Verse(s)
+			const book = match[1];
+			const chapter = match[2];
+			const verses = match[3];
 			const bookNameQuery = Object.values(bookNames).find(bookName => bookName.koreanNames.includes(book));
-			console.log("BOOK NAME FOUND?", bookNameQuery)
-			// return getSuggestionsFromQuery(`${query}`);
-			const queryString = `${bookNameQuery?.key}/${chapter}:${verses}`
-			const suggestions = await this.callAPI(queryString);
+			const queryString = `${bookNameQuery?.key}/${chapter}:${verses}`;
+			const suggestions = await callAPI(queryString);
 			this.selectedVerses = `${bookNameQuery?.koreanNames[0]} ${chapter}:${verses}`;
 			return suggestions;
 		}
 		return [];
 	}
 
-	// Render each suggestion item
-		renderSuggestion(suggestion: string, el: HTMLElement) {
+	renderSuggestion(suggestion: string, el: HTMLElement) {
 		el.createEl('div', { text: suggestion });
 	}
 
-	// Perform action on the selected suggestion
 	onChooseSuggestion(suggestion: string, evt: MouseEvent | KeyboardEvent) {
-		// new Notice(`You selected: ${suggestion}`);
 		const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
 		if (!editor) {
 			return;
 		}
-		
-		const formattedSuggestion = this.formatVersesForCallout(suggestion);
-
+		const formattedSuggestion = formatVersesForCallout(suggestion);
 		const cursor = editor.getCursor();
 		editor.replaceRange(formattedSuggestion, cursor);
 
-		// Calculate the new cursor position
 		const newCursorPosition = {
 			line: cursor.line + formattedSuggestion.split('\n').length - 1,
 			ch: formattedSuggestion.split('\n').pop()?.length || 0
 		};
-
-  		editor.setCursor(newCursorPosition);
+		editor.setCursor(newCursorPosition);
 	}
-
-	formatVersesForCallout(suggestion: string): string {
-		const selectedVerses = this.selectedVerses ? this.selectedVerses : "";
-		return `> [!quote]+ ${selectedVerses} \n> ${suggestion}`;
-	  }
-
-	async callAPI(query: string): Promise<string[]> {
-		try {
-		  const apiUrl = `http://ibibles.net/quote.php?kor-${query}`;
-		  const response = await requestPromise(apiUrl);
-		  console.log("Query?", query);
-		  console.log("Response?", response);
-		  const extractedVerses = extractVerses(response);
-  		  console.log(extractedVerses);
-		  
-	
-		  // Assuming the response is a plain text that you can split into suggestions
-		  return [formatVerses(extractedVerses)]; // Adjust according to the actual response format
-		} catch (error) {
-		  console.error('Error fetching data:', error);
-		  return [];
-		}
-	  }
 }
 
-interface Verse {
-	verseNumber: string;
-	verseText: string;
-  }
+// Editor Suggest class
+class VerseEditorSuggester extends EditorSuggest<string> {
+	private plugin: KoreanBibleSearchPlugin;
+	private settings: KoreanBibleSearchPluginSettings;
 
-// Function to extract verses and texts
-function extractVerses(html: string): Verse[] {
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(html, 'text/html');
-	const smallTags = doc.querySelectorAll('small');
-	const verses: { verseNumber: string, verseText: string }[] = [];
-  
-	smallTags.forEach((smallTag) => {
-	  const verseNumber = smallTag.textContent!.trim(); // Non-null assertion
-	  let textNode = smallTag.nextSibling;
-	  let verseText = '';
-  
-	  // Traverse until the next <br> or end of node
-	  while (textNode && textNode.nodeName !== 'BR') {
-		if (textNode.nodeType === Node.TEXT_NODE) {
-			verseText += textNode.textContent!.trim(); // Non-null assertion
-		}
-		textNode = textNode.nextSibling;
-	  }
-  
-	  verses.push({ verseNumber, verseText });
-	});
-  
-	return verses;
-  }
-
-  function formatVerses(verses: Verse[]): string {
-	return verses.map(v => {
-	  const verseNumber = v.verseNumber.split(':')[1]; // Extract the verse number after ':'
-	  return `${verseNumber} ${v.verseText}`; // Combine the verse number and text
-	}).join('\n'); // Join all strings with a newline character
-  }
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: KoreanBibleSearchPlugin;
-
-	constructor(app: App, plugin: KoreanBibleSearchPlugin) {
-		super(app, plugin);
+	constructor(plugin: KoreanBibleSearchPlugin, settings: KoreanBibleSearchPluginSettings) {
+		super(plugin.app);
 		this.plugin = plugin;
+		this.settings = settings;
 	}
 
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
+	onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+		const currentContent = editor.getLine(cursor.line).substring(0, cursor.ch);
+		if (currentContent.length < 2) {
+			return null;
+		}
+		const prefixTrigger = currentContent.substring(0, 2);
+		if (prefixTrigger !== '++') {
+			return null;
+		}
+		const queryContent = currentContent.substring(2);
+		const match = verseMatch(queryContent);
+		if (match) {
+			return {
+				end: cursor,
+				start: { line: cursor.line, ch: 2 },
+				query: match[0]
+			};
+		}
+		return null;
 	}
+
+	async getSuggestions(context: EditorSuggestContext): Promise<string[]> {
+		const match = verseMatch(context.query);
+		if (match) {
+			const book = match[1];
+			const chapter = match[2];
+			const verses = match[3];
+			const bookNameQuery = Object.values(bookNames).find(bookName => bookName.koreanNames.includes(book));
+			const queryString = `${bookNameQuery?.key}/${chapter}:${verses}`;
+			const suggestions = await callAPI(queryString);
+			return suggestions;
+		}
+		return [];
+	}
+
+	renderSuggestion(suggestion: string, el: HTMLElement) {
+		el.createEl('div', { text: suggestion });
+	}
+
+	selectSuggestion(suggestion: string, evt: MouseEvent | KeyboardEvent) {
+        const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+        if (!editor) {
+            return;
+        }
+        const formattedSuggestion = formatVersesForCallout(suggestion);
+        const cursor = editor.getCursor();
+        editor.replaceRange(formattedSuggestion, cursor);
+
+        const newCursorPosition = {
+            line: cursor.line + formattedSuggestion.split('\n').length - 1,
+            ch: formattedSuggestion.split('\n').pop()?.length || 0
+        };
+        editor.setCursor(newCursorPosition);
+    }
+}
+
+// Settings Tab class
+class SampleSettingTab extends PluginSettingTab {
+    plugin: KoreanBibleSearchPlugin;
+
+    constructor(app: App, plugin: KoreanBibleSearchPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+
+    display(): void {
+        const { containerEl } = this;
+        containerEl.empty();
+
+        new Setting(containerEl)
+            .setName('Setting #1')
+            .setDesc('It\'s a secret')
+            .addText(text => text
+                .setPlaceholder('Enter your secret')
+                .setValue(this.plugin.settings.mySetting)
+                .onChange(async (value) => {
+                    this.plugin.settings.mySetting = value;
+                    await this.plugin.saveSettings();
+                }));
+    }
 }
