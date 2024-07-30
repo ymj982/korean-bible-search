@@ -970,10 +970,6 @@ function formatVerses(verses: Verse[]): string {
 	}).join('\n');
 }
 
-function formatVersesForCallout(suggestion: string): string {
-	return `> [!quote]+ ${suggestion}`;
-}
-
 async function callAPI(query: string): Promise<string[]> {
 	try {
 		const apiUrl = `http://ibibles.net/quote.php?kor-${query}`;
@@ -1021,7 +1017,7 @@ class VerseSuggestModal extends SuggestModal<string> {
 		if (!editor) {
 			return;
 		}
-		const formattedSuggestion = formatVersesForCallout(suggestion);
+		const formattedSuggestion = this.formatVersesForCallout(suggestion, this.selectedVerses);
 		const cursor = editor.getCursor();
 		editor.replaceRange(formattedSuggestion, cursor);
 
@@ -1031,69 +1027,78 @@ class VerseSuggestModal extends SuggestModal<string> {
 		};
 		editor.setCursor(newCursorPosition);
 	}
+
+	formatVersesForCallout(suggestion: string, selectedVerses: string | null): string {
+		return `> [!quote]+ ${selectedVerses ? selectedVerses : '구절'}\n> ${suggestion}`;
+	}
 }
 
 // Editor Suggest class
 class VerseEditorSuggester extends EditorSuggest<string> {
-	private plugin: KoreanBibleSearchPlugin;
-	private settings: KoreanBibleSearchPluginSettings;
+    private plugin: KoreanBibleSearchPlugin;
+    private settings: KoreanBibleSearchPluginSettings;
+	private selectedVerses: string | null = null;
 
-	constructor(plugin: KoreanBibleSearchPlugin, settings: KoreanBibleSearchPluginSettings) {
-		super(plugin.app);
-		this.plugin = plugin;
-		this.settings = settings;
-	}
+    constructor(plugin: KoreanBibleSearchPlugin, settings: KoreanBibleSearchPluginSettings) {
+        super(plugin.app);
+        this.plugin = plugin;
+        this.settings = settings;
+    }
 
-	onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
-		const currentContent = editor.getLine(cursor.line).substring(0, cursor.ch);
-		if (currentContent.length < 2) {
-			return null;
-		}
-		const prefixTrigger = currentContent.substring(0, 2);
-		if (prefixTrigger !== '++') {
-			return null;
-		}
-		const queryContent = currentContent.substring(2);
-		const match = verseMatch(queryContent);
-		if (match) {
-			return {
-				end: cursor,
-				start: { line: cursor.line, ch: 2 },
-				query: match[0]
-			};
-		}
-		return null;
-	}
+    onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+        const currentContent = editor.getLine(cursor.line).substring(0, cursor.ch);
+        if (currentContent.length < 2) {
+            return null;
+        }
+        const prefixTrigger = currentContent.substring(0, 2);
+        if (prefixTrigger !== '++') {
+            return null;
+        }
+        const queryContent = currentContent.substring(2);
+        const match = verseMatch(queryContent);
+        if (match) {
+            return {
+                end: cursor,
+                start: { line: cursor.line, ch: 0 },
+                query: match[0]
+            };
+        }
+        return null;
+    }
 
-	async getSuggestions(context: EditorSuggestContext): Promise<string[]> {
-		const match = verseMatch(context.query);
-		if (match) {
-			const book = match[1];
-			const chapter = match[2];
-			const verses = match[3];
-			const bookNameQuery = Object.values(bookNames).find(bookName => bookName.koreanNames.includes(book));
-			const queryString = `${bookNameQuery?.key}/${chapter}:${verses}`;
-			const suggestions = await callAPI(queryString);
-			return suggestions;
-		}
-		return [];
-	}
+    async getSuggestions(context: EditorSuggestContext): Promise<string[]> {
+        const match = verseMatch(context.query);
+        if (match) {
+            const book = match[1];
+            const chapter = match[2];
+            const verses = match[3];
+            const bookNameQuery = Object.values(bookNames).find(bookName => bookName.koreanNames.includes(book));
+            const queryString = `${bookNameQuery?.key}/${chapter}:${verses}`;
+            const suggestions = await callAPI(queryString);
+			this.selectedVerses = `${bookNameQuery?.koreanNames[0]} ${chapter}:${verses}`;
+            return suggestions;
+        }
+        return [];
+    }
 
-	renderSuggestion(suggestion: string, el: HTMLElement) {
-		el.createEl('div', { text: suggestion });
-	}
+    renderSuggestion(suggestion: string, el: HTMLElement) {
+        el.createEl('div', { text: suggestion });
+    }
 
-	selectSuggestion(suggestion: string, evt: MouseEvent | KeyboardEvent) {
-        const editor = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+    selectSuggestion(suggestion: string, evt: MouseEvent | KeyboardEvent) {
+        const editor = this.plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
         if (!editor) {
             return;
         }
-        const formattedSuggestion = formatVersesForCallout(suggestion);
-        const cursor = editor.getCursor();
-        editor.replaceRange(formattedSuggestion, cursor);
+        // Create a new instance of VerseSuggestModal to access the formatVersesForCallout method
+        const verseSuggestModal = new VerseSuggestModal(this.plugin.app);
+        const formattedSuggestion = verseSuggestModal.formatVersesForCallout(suggestion, this.selectedVerses);
+
+        const { start, end } = this.context!;
+        editor.replaceRange(formattedSuggestion, start, end);
 
         const newCursorPosition = {
-            line: cursor.line + formattedSuggestion.split('\n').length - 1,
+            line: start.line + formattedSuggestion.split('\n').length - 1,
             ch: formattedSuggestion.split('\n').pop()?.length || 0
         };
         editor.setCursor(newCursorPosition);
